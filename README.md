@@ -71,6 +71,23 @@ npm run preview
 # http://localhost:4173/
 ```
 
+## Wallet Signing (dApp)
+- The frontend uses Petra wallet to sign and submit transactions for on-chain actions (create collection, mint NFTs, set roles, etc.). Connect Petra in the Profile page, then use Dashboard actions — all are wallet-signed.
+
+## AIP-62 Digital Assets (ts-sdk)
+- Server-side mint script using `@aptos-labs/ts-sdk` is available:
+  - Path: `scripts/mint.mjs`
+  - Env:
+    - `APTOS_NETWORK=testnet`
+    - `PRIVATE_KEY=ed25519-priv-0x<your_ed25519_private_key>`
+    - Optional: `COLLECTION_NAME`, `TOKEN_NAME`, `TOKEN_URI`
+  - Run:
+    ```bash
+    npm install
+    npm run mint
+    ```
+- The script creates a collection and mints a digital asset (AIP-62). Use the minted asset’s metadata URI (`ipfs://...`) in the frontend Verify page.
+
 ## Environment Variables (optional)
 Configure in Vercel/Lovable Project Settings:
 - `VITE_NODE_URL` (default `https://fullnode.testnet.aptoslabs.com/v1`)
@@ -117,6 +134,8 @@ liquorchain_on_aptos/
 ## Security
 - Never commit private keys or `.aptos/config.yaml`.
 - Prefer `~/.aptos/global_config.yaml`.
+
+Note: Some wallets were deprecated for submitting transactions via Explorer if they do not support AIP‑62. Use Petra or another AIP‑62 compatible wallet.
 
 ---
 

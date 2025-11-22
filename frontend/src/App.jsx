@@ -662,7 +662,7 @@ export default function App() {
             </Form.Item>
             <Divider />
             <Form.Item>
-              <Button type="primary" htmlType="submit" loading={loading} block>{t('mint_nft')}</Button>
+              <Button type="primary" htmlType="submit" loading={loading} block>{t('mint_nft_wallet')}</Button>
             </Form.Item>
           </Form>
         </Card>
