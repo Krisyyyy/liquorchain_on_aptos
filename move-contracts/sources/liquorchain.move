@@ -6,7 +6,7 @@ module liquorchain::liquorchain {
     
     
     use std::bcs;
-    use aptos_token::token::{Self, initialize_token_script, create_collection_script, create_token_script, transfer_with_opt_in, opt_in_direct_transfer};
+    use aptos_token::token::{create_collection_script, create_token_script, transfer_with_opt_in, opt_in_direct_transfer};
 
     struct LiquorMeta has key {
         next_batch_id: u64,
@@ -75,11 +75,7 @@ module liquorchain::liquorchain {
 
     
 
-    public entry fun init_store(account: &signer) {
-        if (!token::has_token_store(signer::address_of(account))) {
-            initialize_token_script(account);
-        };
-    }
+    
 
     public entry fun create_collection(creator: &signer) {
         let mutate = vector::empty<bool>();

@@ -170,26 +170,7 @@ export default function App() {
     }
   }
 
-  const onInitStore = async () => {
-    if (!connected) return message.error(t('need_connect'))
-    setLoading(true)
-    try {
-      const payload = {
-        type: 'entry_function_payload',
-        function: `${moduleAddress}::liquorchain::init_store`,
-        type_arguments: [],
-        arguments: [],
-      }
-      const res = await signAndSubmitTransaction(payload)
-      await client.waitForTransaction(res.hash)
-      message.success(`${t('init_store_success')} ${res.hash}`)
-    } catch (e) {
-      console.error(e)
-      message.error(t('init_store_fail'))
-    } finally {
-      setLoading(false)
-    }
-  }
+  
 
   const onFinish = async (values) => {
     if (!connected) return message.error(t('need_connect'))
@@ -596,7 +577,6 @@ export default function App() {
             <Space direction="vertical" style={{ width: '100%' }}>
               <Title level={4}>{t('section_collection_account')}</Title>
               <Button block disabled={loading} onClick={onCreateCollection}>{t('create_collection')}</Button>
-              <Button block disabled={loading} onClick={onInitStore}>{t('init_tokenstore')}</Button>
             </Space>
           </Card>
           <Card>
