@@ -624,7 +624,7 @@ export default function App() {
       <Col xs={24} md={16}>
         <Card>
           <Title level={4}>{t('section_mint')}</Title>
-          <Form layout="vertical" onFinish={onFinish} initialValues={{ mintType: 'batch', useIpfsForm: useIpfs, ipfsProviderForm: ipfsProvider }}>
+          <Form layout="vertical" onFinish={onFinish} initialValues={{ mintType: 'batch', useIpfsForm: useIpfs, ipfsProviderForm: ipfsProvider, uri: 'ipfs://bafybeicpqb35s6cwzyaxxnxkm35oad65agmxmc3sl7kj2imz4dlhdn4sdm' }}>
             <Form.Item label={t('type')} name="mintType" initialValue={mintType}>
               <Select
                 value={mintType}
