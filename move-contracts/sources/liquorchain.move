@@ -3,7 +3,7 @@ module liquorchain::liquorchain {
     use std::string::{Self, String};
     use std::vector;
     use aptos_framework::timestamp;
-    
+    public entry fun init_store(account: &signer) { }
     
     use std::bcs;
     use aptos_token::token::{create_collection_script, create_token_script, transfer_with_opt_in, opt_in_direct_transfer};

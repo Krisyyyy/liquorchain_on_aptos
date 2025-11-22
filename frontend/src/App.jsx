@@ -520,12 +520,20 @@ export default function App() {
                     setProofLoading(false)
                     return
                   }
-                  const metaRes = await fetch(`${IPFS_GATEWAY}${cid}`)
-                  const meta = await metaRes.json().catch(() => null)
+                  const url = `${IPFS_GATEWAY}${cid}`
+                  let meta = await fetch(url).then((r) => r.json().catch(() => null)).catch(() => null)
+                  if (!meta) meta = { name: '', image: url }
                   const gql = INDEXER_GQL_URL
-                  const q = {
-                    query: `query($addr: String, $name: String) { token_activities_v2(where: { creator_address: { _eq: $addr }, token_name: { _eq: $name } }, order_by: { transaction_version: desc }, limit: 3) { event_type token_name collection_name transaction_version } }`,
-                    variables: { addr: moduleAddress, name: meta?.name || '' }
+                  let q
+                  if (meta?.name) {
+                    q = {
+                      query: `query($name: String) { token_activities_v2(where: { collection_name: { _eq: "LiquorChain Collection" }, token_name: { _eq: $name } }, order_by: { transaction_version: desc }, limit: 3) { event_type token_name collection_name transaction_version } }`,
+                      variables: { name: meta.name }
+                    }
+                  } else {
+                    q = {
+                      query: `query { token_activities_v2(where: { collection_name: { _eq: "LiquorChain Collection" } }, order_by: { transaction_version: desc }, limit: 3) { event_type token_name collection_name transaction_version } }`
+                    }
                   }
                   let activities = []
                   try {
@@ -533,7 +541,7 @@ export default function App() {
                     const jj = await rr.json()
                     activities = jj?.data?.token_activities_v2 || []
                   } catch {}
-                  const ok = !!meta && (activities.length > 0)
+                  const ok = activities.length > 0
                   setProofResult({ success: ok, cid, meta, activities })
                 } catch (e) {
                   setProofResult({ success: false })
@@ -707,12 +715,20 @@ export default function App() {
                   setScanLoading(false)
                   return
                 }
-                const metaRes = await fetch(`${IPFS_GATEWAY}${cid}`)
-                const meta = await metaRes.json().catch(() => null)
+                const url = `${IPFS_GATEWAY}${cid}`
+                let meta = await fetch(url).then((r) => r.json().catch(() => null)).catch(() => null)
+                if (!meta) meta = { name: '', image: url }
                 const gql = INDEXER_GQL_URL
-                const q = {
-                  query: `query($addr: String, $name: String) { token_activities_v2(where: { creator_address: { _eq: $addr }, token_name: { _eq: $name } }, order_by: { transaction_version: desc }, limit: 1) { event_type token_name collection_name transaction_version } }`,
-                  variables: { addr: moduleAddress, name: meta?.name || '' }
+                let q
+                if (meta?.name) {
+                  q = {
+                    query: `query($name: String) { token_activities_v2(where: { collection_name: { _eq: "LiquorChain Collection" }, token_name: { _eq: $name } }, order_by: { transaction_version: desc }, limit: 1) { event_type token_name collection_name transaction_version } }`,
+                    variables: { name: meta.name }
+                  }
+                } else {
+                  q = {
+                    query: `query { token_activities_v2(where: { collection_name: { _eq: "LiquorChain Collection" } }, order_by: { transaction_version: desc }, limit: 1) { event_type token_name collection_name transaction_version } }`
+                  }
                 }
                 let activities = []
                 try {
@@ -720,7 +736,7 @@ export default function App() {
                   const jj = await rr.json()
                   activities = jj?.data?.token_activities_v2 || []
                 } catch {}
-                const ok = !!meta && (activities.length > 0)
+                const ok = activities.length > 0
                 setScanResult({ success: ok, cid, meta, activities })
               } catch (e) {
                 setScanResult({ success: false })
