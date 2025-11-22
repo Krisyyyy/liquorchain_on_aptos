@@ -1,0 +1,11 @@
+[package]
+name = "LiquorChain"
+version = "0.0.1"
+
+[addresses]
+# Testnet 部署账户地址
+liquorchain = "0xee7f6e6168e3dbd14d4f37106b26d1753dec5180299bef219bfa515f56c0e7b6"
+
+[dependencies]
+AptosFramework = { git = "https://github.com/aptos-labs/aptos-core.git", subdir = "aptos-move/framework/aptos-framework", rev = "main" }
+AptosToken     = { git = "https://github.com/aptos-labs/aptos-core.git", subdir = "aptos-move/framework/aptos-token",     rev = "main" }
