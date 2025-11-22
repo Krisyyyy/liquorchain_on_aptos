@@ -196,6 +196,20 @@ export default function App() {
     const { name, description, uri, batchId, useIpfsForm, ipfsProviderForm, ipfsTokenForm } = values
     setLoading(true)
     try {
+      try {
+        const tokenStoreTypes = ['0x4::token::TokenStore', '0x3::token::TokenStore']
+        let hasStore = false
+        for (const ty of tokenStoreTypes) {
+          const r = await client.getAccountResource(addr, ty).catch(() => null)
+          if (r) { hasStore = true; break }
+        }
+        if (!hasStore) {
+          message.error(t('need_init_store'))
+          setLoading(false)
+          setPage('dashboard')
+          return
+        }
+      } catch {}
       let finalUri = uri
       const shouldIpfs = useIpfsForm ?? useIpfs
       const provider = ipfsProviderForm ?? ipfsProvider

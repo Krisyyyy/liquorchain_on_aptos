@@ -122,7 +122,6 @@ module liquorchain::liquorchain {
         description: String,
         uri: String,
     ) acquires LiquorMeta, BatchStore {
-        init_store(creator);
 
         let addr = signer::address_of(creator);
         let meta = borrow_global_mut<LiquorMeta>(addr);
@@ -194,7 +193,6 @@ module liquorchain::liquorchain {
         description: String,
         uri: String,
     ) acquires BottleStore {
-        init_store(creator);
 
         let addr = signer::address_of(creator);
 
@@ -353,7 +351,6 @@ module liquorchain::liquorchain {
     }
 
     public entry fun mint_qr_nft(creator: &signer, name: String, description: String, uri: String) {
-        init_store(creator);
         let addr = signer::address_of(creator);
         let keys = vector::empty<String>();
         let types = vector::empty<String>();
