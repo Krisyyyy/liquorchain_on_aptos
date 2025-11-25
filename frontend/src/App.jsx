@@ -170,7 +170,26 @@ export default function App() {
     }
   }
 
-  
+  const onInitStore = async () => {
+    if (!connected) return message.error(t('need_connect'))
+    setLoading(true)
+    try {
+      const payload = {
+        type: 'entry_function_payload',
+        function: `${moduleAddress}::liquorchain::init_store`,
+        type_arguments: [],
+        arguments: [],
+      }
+      const res = await signAndSubmitTransaction(payload)
+      await client.waitForTransaction(res.hash)
+      message.success(`${t('init_store_success')} ${res.hash}`)
+    } catch (e) {
+      console.error(e)
+      message.error(t('init_store_fail'))
+    } finally {
+      setLoading(false)
+    }
+  }
 
   const onFinish = async (values) => {
     if (!connected) return message.error(t('need_connect'))
@@ -520,20 +539,12 @@ export default function App() {
                     setProofLoading(false)
                     return
                   }
-                  const url = `${IPFS_GATEWAY}${cid}`
-                  let meta = await fetch(url).then((r) => r.json().catch(() => null)).catch(() => null)
-                  if (!meta) meta = { name: '', image: url }
+                  const metaRes = await fetch(`${IPFS_GATEWAY}${cid}`)
+                  const meta = await metaRes.json().catch(() => null)
                   const gql = INDEXER_GQL_URL
-                  let q
-                  if (meta?.name) {
-                    q = {
-                      query: `query($name: String) { token_activities_v2(where: { collection_name: { _eq: "LiquorChain Collection" }, token_name: { _eq: $name } }, order_by: { transaction_version: desc }, limit: 3) { event_type token_name collection_name transaction_version } }`,
-                      variables: { name: meta.name }
-                    }
-                  } else {
-                    q = {
-                      query: `query { token_activities_v2(where: { collection_name: { _eq: "LiquorChain Collection" } }, order_by: { transaction_version: desc }, limit: 3) { event_type token_name collection_name transaction_version } }`
-                    }
+                  const q = {
+                    query: `query($addr: String, $name: String) { token_activities_v2(where: { creator_address: { _eq: $addr }, token_name: { _eq: $name } }, order_by: { transaction_version: desc }, limit: 3) { event_type token_name collection_name transaction_version } }`,
+                    variables: { addr: moduleAddress, name: meta?.name || '' }
                   }
                   let activities = []
                   try {
@@ -541,7 +552,7 @@ export default function App() {
                     const jj = await rr.json()
                     activities = jj?.data?.token_activities_v2 || []
                   } catch {}
-                  const ok = activities.length > 0
+                  const ok = !!meta && (activities.length > 0)
                   setProofResult({ success: ok, cid, meta, activities })
                 } catch (e) {
                   setProofResult({ success: false })
@@ -585,6 +596,7 @@ export default function App() {
             <Space direction="vertical" style={{ width: '100%' }}>
               <Title level={4}>{t('section_collection_account')}</Title>
               <Button block disabled={loading} onClick={onCreateCollection}>{t('create_collection')}</Button>
+              <Button block disabled={loading} onClick={onInitStore}>{t('init_tokenstore')}</Button>
             </Space>
           </Card>
           <Card>
@@ -662,7 +674,7 @@ export default function App() {
             </Form.Item>
             <Divider />
             <Form.Item>
-              <Button type="primary" htmlType="submit" loading={loading} block>{t('mint_nft_wallet')}</Button>
+              <Button type="primary" htmlType="submit" loading={loading} block>{t('mint_nft')}</Button>
             </Form.Item>
           </Form>
         </Card>
@@ -715,20 +727,12 @@ export default function App() {
                   setScanLoading(false)
                   return
                 }
-                const url = `${IPFS_GATEWAY}${cid}`
-                let meta = await fetch(url).then((r) => r.json().catch(() => null)).catch(() => null)
-                if (!meta) meta = { name: '', image: url }
+                const metaRes = await fetch(`${IPFS_GATEWAY}${cid}`)
+                const meta = await metaRes.json().catch(() => null)
                 const gql = INDEXER_GQL_URL
-                let q
-                if (meta?.name) {
-                  q = {
-                    query: `query($name: String) { token_activities_v2(where: { collection_name: { _eq: "LiquorChain Collection" }, token_name: { _eq: $name } }, order_by: { transaction_version: desc }, limit: 1) { event_type token_name collection_name transaction_version } }`,
-                    variables: { name: meta.name }
-                  }
-                } else {
-                  q = {
-                    query: `query { token_activities_v2(where: { collection_name: { _eq: "LiquorChain Collection" } }, order_by: { transaction_version: desc }, limit: 1) { event_type token_name collection_name transaction_version } }`
-                  }
+                const q = {
+                  query: `query($addr: String, $name: String) { token_activities_v2(where: { creator_address: { _eq: $addr }, token_name: { _eq: $name } }, order_by: { transaction_version: desc }, limit: 1) { event_type token_name collection_name transaction_version } }`,
+                  variables: { addr: moduleAddress, name: meta?.name || '' }
                 }
                 let activities = []
                 try {
@@ -736,7 +740,7 @@ export default function App() {
                   const jj = await rr.json()
                   activities = jj?.data?.token_activities_v2 || []
                 } catch {}
-                const ok = activities.length > 0
+                const ok = !!meta && (activities.length > 0)
                 setScanResult({ success: ok, cid, meta, activities })
               } catch (e) {
                 setScanResult({ success: false })
