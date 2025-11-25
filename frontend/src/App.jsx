@@ -35,8 +35,19 @@ export default function App() {
   const [qrImageUrl, setQrImageUrl] = useState('')
   const [lastCid, setLastCid] = useState('')
   const [lastQrCid, setLastQrCid] = useState('')
+  const [indexerUrl, setIndexerUrl] = useState(INDEXER_GQL_URL)
+  const [ipfsGateway, setIpfsGateway] = useState(IPFS_GATEWAY)
+  const [collectionName, setCollectionName] = useState('LiquorChain Collection')
 
   const addr = useMemo(() => address || '', [address])
+  const stdAddr = (s) => {
+    const v = typeof s === 'string' ? s : ''
+    if (!v) return ''
+    const hex = v.startsWith('0x') ? v.slice(2) : v
+    const padded = hex.padStart(64, '0')
+    return `0x${padded}`
+  }
+  const addrStd = useMemo(() => stdAddr(addr), [addr])
 
   React.useEffect(() => {
     const update = () => {
@@ -134,10 +145,24 @@ export default function App() {
           const rs = rolesRes.data.roles.map(decodeStr).filter(Boolean)
           if (rs.length) setMemberRoles(rs)
         }
-        const gql = INDEXER_GQL_URL
-        const q = {
-          query: `query($addr: String) { token_activities_v2(where: { creator_address: { _eq: $addr } }, order_by: { transaction_version: desc }, limit: 10) { event_type token_name collection_name transaction_version from_address to_address creator_address } }`,
-          variables: { addr: moduleAddress }
+        const gql = indexerUrl
+        let q
+        if (connected && addrStd) {
+          q = {
+            query: `query($addr: String) { token_activities_v2(
+              where: { _or: [
+                { creator_address: { _eq: $addr } },
+                { to_address: { _eq: $addr } },
+                { event_account_address: { _eq: $addr } }
+              ] },
+              order_by: { transaction_version: desc }, limit: 10
+            ) { token_data_id transaction_version } }`,
+            variables: { addr: addrStd },
+          }
+        } else {
+          q = {
+            query: `query { token_activities_v2(order_by: { transaction_version: desc }, limit: 10) { token_data_id transaction_version } }`,
+          }
         }
         try {
           const r = await fetch(gql, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(q) })
@@ -170,45 +195,24 @@ export default function App() {
     }
   }
 
-  const onInitStore = async () => {
-    if (!connected) return message.error(t('need_connect'))
-    setLoading(true)
-    try {
-      const payload = {
-        type: 'entry_function_payload',
-        function: `${moduleAddress}::liquorchain::init_store`,
-        type_arguments: [],
-        arguments: [],
-      }
-      const res = await signAndSubmitTransaction(payload)
-      await client.waitForTransaction(res.hash)
-      message.success(`${t('init_store_success')} ${res.hash}`)
-    } catch (e) {
-      console.error(e)
-      message.error(t('init_store_fail'))
-    } finally {
-      setLoading(false)
-    }
-  }
+  
 
   const onFinish = async (values) => {
     if (!connected) return message.error(t('need_connect'))
     const { name, description, uri, batchId, useIpfsForm, ipfsProviderForm, ipfsTokenForm } = values
     setLoading(true)
     try {
+      let nm = name
       try {
-        const tokenStoreTypes = ['0x4::token::TokenStore', '0x3::token::TokenStore']
-        let hasStore = false
-        for (const ty of tokenStoreTypes) {
-          const r = await client.getAccountResource(addr, ty).catch(() => null)
-          if (r) { hasStore = true; break }
+        const gql = indexerUrl
+        const q = {
+          query: `query($name: String, $creator: String) { current_token_datas_v2(where: { collection_name: { _eq: "LiquorChain Collection" }, token_name: { _eq: $name }, creator_address: { _eq: $creator } }, limit: 1) { token_data_id } }`,
+          variables: { name: nm, creator: addrStd },
         }
-        if (!hasStore) {
-          message.error(t('need_init_store'))
-          setLoading(false)
-          setPage('dashboard')
-          return
-        }
+        const r = await fetch(gql, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(q) })
+        const j = await r.json()
+        const exists = (j?.data?.current_token_datas_v2 || []).length > 0
+        if (exists) nm = `${nm} ${String(Date.now()).slice(-6)}`
       } catch {}
       let finalUri = uri
       const shouldIpfs = useIpfsForm ?? useIpfs
@@ -243,7 +247,7 @@ export default function App() {
           return
         }
         const meta = {
-          name,
+          name: nm,
           description,
           image: uri,
           attributes: [
@@ -258,20 +262,39 @@ export default function App() {
       const payload =
         mintType === 'batch'
           ? {
-              type: 'entry_function_payload',
-              function: `${moduleAddress}::liquorchain::mint_batch_nft`,
-              type_arguments: [],
-              arguments: [name, description, finalUri],
+            type: 'entry_function_payload',
+            function: `${moduleAddress}::liquorchain::mint_batch_nft`,
+            type_arguments: [],
+            arguments: [nm, description, finalUri],
             }
           : {
-              type: 'entry_function_payload',
-              function: `${moduleAddress}::liquorchain::mint_bottle_nft`,
-              type_arguments: [],
-              arguments: [Number(batchId), name, description, finalUri],
+            type: 'entry_function_payload',
+            function: `${moduleAddress}::liquorchain::mint_bottle_nft`,
+            type_arguments: [],
+            arguments: [Number(batchId), nm, description, finalUri],
             }
       const res = await signAndSubmitTransaction(payload)
       await client.waitForTransaction(res.hash)
       message.success(`${t('mint_success')} ${res.hash}`)
+      try {
+        await new Promise((resolve) => setTimeout(resolve, 2000))
+        const gql = indexerUrl
+        const q = {
+          query: `query($addr: String) { token_activities_v2(
+            where: { _or: [
+              { creator_address: { _eq: $addr } },
+              { to_address: { _eq: $addr } },
+              { event_account_address: { _eq: $addr } }
+            ] },
+            order_by: { transaction_version: desc }, limit: 10
+          ) { token_data_id transaction_version } }`,
+          variables: { addr: addrStd },
+        }
+        const r = await fetch(gql, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(q) })
+        const j = await r.json()
+        const evs = j?.data?.token_activities_v2 || []
+        setIndexerEvents(evs)
+      } catch {}
       if (shouldIpfs && lastCid) {
         const qrApi = `${QR_CREATE_API}?size=220x220&data=${encodeURIComponent(`ipfs://${lastCid}`)}`
         const rr = await fetch(qrApi)
@@ -447,16 +470,11 @@ export default function App() {
                   style={{ width: 160 }}
                 />
               </Space>
-              {indexerEvents.length ? indexerEvents.filter((e) => {
-                const et = String(e.event_type || '').toLowerCase()
-                if (eventFilter === 'mint') return et.includes('mint')
-                if (eventFilter === 'transfer') return et.includes('transfer')
-                return true
-              }).map((e, i) => (
+              {indexerEvents.length ? indexerEvents.map((e, i) => (
                 <Space key={i}>
-                  <Tag style={{ background: '#121212', color: '#E5E7EB', borderColor: '#121212' }}>{e.event_type}</Tag>
-                  <Text style={{ color: '#E5E7EB' }}>{e.collection_name} / {e.token_name}</Text>
-                  <Text style={{ color: '#C8A95A' }}>{e.transaction_version}</Text>
+                  <Tag style={{ background: '#121212', color: '#E5E7EB', borderColor: '#121212' }}>Event</Tag>
+                  <Text style={{ color: '#E5E7EB' }}>Token {String(e.token_data_id || '').slice(0,10)}...</Text>
+                  <Text style={{ color: '#C8A95A' }}>Version {e.transaction_version}</Text>
                 </Space>
               )) : <Result status="info" title="No Events" />}
             </Space>
@@ -539,21 +557,49 @@ export default function App() {
                     setProofLoading(false)
                     return
                   }
-                  const metaRes = await fetch(`${IPFS_GATEWAY}${cid}`)
-                  const meta = await metaRes.json().catch(() => null)
-                  const gql = INDEXER_GQL_URL
-                  const q = {
-                    query: `query($addr: String, $name: String) { token_activities_v2(where: { creator_address: { _eq: $addr }, token_name: { _eq: $name } }, order_by: { transaction_version: desc }, limit: 3) { event_type token_name collection_name transaction_version } }`,
-                    variables: { addr: moduleAddress, name: meta?.name || '' }
+                  const url = `${ipfsGateway}${cid}`
+                  let meta = await fetch(url).then((r) => r.json().catch(() => null)).catch(() => null)
+                  if (!meta) meta = { name: '', image: url }
+                  const gql = indexerUrl
+                  const ipfsUri = cid.startsWith('ipfs://') ? cid : `ipfs://${cid}`
+                  const first = {
+                    query: `query($uri: String) { current_token_datas_v2(where: { token_uri: { _eq: $uri } }, limit: 1) { token_data_id token_name token_uri } }`,
+                    variables: { uri: ipfsUri },
                   }
                   let activities = []
                   try {
+                    const r1 = await fetch(gql, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(first) })
+                    const j1 = await r1.json()
+                    const td = (j1?.data?.current_token_datas_v2 || [])[0]
+                    let q
+                    if (td?.token_data_id) {
+                      q = {
+                        query: `query($id: String) { token_activities_v2(where: { token_data_id: { _eq: $id } }, order_by: { transaction_version: desc }, limit: 3) { token_data_id transaction_version } }`,
+                        variables: { id: td.token_data_id },
+                      }
+                    } else {
+                      q = {
+                        query: `query($uri: String) { token_activities_v2(where: { current_token_data: { token_uri: { _eq: $uri } } }, order_by: { transaction_version: desc }, limit: 3) { token_data_id transaction_version } }`,
+                        variables: { uri: ipfsUri },
+                      }
+                    }
                     const rr = await fetch(gql, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(q) })
                     const jj = await rr.json()
                     activities = jj?.data?.token_activities_v2 || []
+                    let owners = []
+                    if (td?.token_data_id) {
+                      const ownQ = {
+                        query: `query($id: String) { current_token_ownerships_v2(where: { token_data_id: { _eq: $id } }, limit: 5) { owner_address amount } }`,
+                        variables: { id: td.token_data_id },
+                      }
+                      const ro = await fetch(gql, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(ownQ) })
+                      const jo = await ro.json()
+                      owners = jo?.data?.current_token_ownerships_v2 || []
+                    }
+                    const ok = !!td || activities.length > 0 || owners.length > 0
+                    setProofResult({ success: ok, cid, meta, activities, token_data_id: td?.token_data_id || '', owners })
                   } catch {}
-                  const ok = !!meta && (activities.length > 0)
-                  setProofResult({ success: ok, cid, meta, activities })
+                  
                 } catch (e) {
                   setProofResult({ success: false })
                 } finally {
@@ -596,7 +642,6 @@ export default function App() {
             <Space direction="vertical" style={{ width: '100%' }}>
               <Title level={4}>{t('section_collection_account')}</Title>
               <Button block disabled={loading} onClick={onCreateCollection}>{t('create_collection')}</Button>
-              <Button block disabled={loading} onClick={onInitStore}>{t('init_tokenstore')}</Button>
             </Space>
           </Card>
           <Card>
@@ -674,7 +719,7 @@ export default function App() {
             </Form.Item>
             <Divider />
             <Form.Item>
-              <Button type="primary" htmlType="submit" loading={loading} block>{t('mint_nft')}</Button>
+              <Button type="primary" htmlType="submit" loading={loading} block>{t('mint_nft_wallet')}</Button>
             </Form.Item>
           </Form>
         </Card>
@@ -727,21 +772,48 @@ export default function App() {
                   setScanLoading(false)
                   return
                 }
-                const metaRes = await fetch(`${IPFS_GATEWAY}${cid}`)
-                const meta = await metaRes.json().catch(() => null)
-                const gql = INDEXER_GQL_URL
-                const q = {
-                  query: `query($addr: String, $name: String) { token_activities_v2(where: { creator_address: { _eq: $addr }, token_name: { _eq: $name } }, order_by: { transaction_version: desc }, limit: 1) { event_type token_name collection_name transaction_version } }`,
-                  variables: { addr: moduleAddress, name: meta?.name || '' }
+                const url = `${IPFS_GATEWAY}${cid}`
+                let meta = await fetch(url).then((r) => r.json().catch(() => null)).catch(() => null)
+                if (!meta) meta = { name: '', image: url }
+                  const gql = indexerUrl
+                const ipfsUri = cid.startsWith('ipfs://') ? cid : `ipfs://${cid}`
+                const first = {
+                  query: `query($uri: String) { current_token_datas_v2(where: { token_uri: { _eq: $uri } }, limit: 1) { token_data_id token_name token_uri } }`,
+                  variables: { uri: ipfsUri },
                 }
                 let activities = []
                 try {
+                  const r1 = await fetch(gql, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(first) })
+                  const j1 = await r1.json()
+                  const td = (j1?.data?.current_token_datas_v2 || [])[0]
+                  let q
+                  if (td?.token_data_id) {
+                    q = {
+                      query: `query($id: String) { token_activities_v2(where: { token_data_id: { _eq: $id } }, order_by: { transaction_version: desc }, limit: 1) { token_data_id transaction_version } }`,
+                      variables: { id: td.token_data_id },
+                    }
+                  } else {
+                    q = {
+                      query: `query($uri: String) { token_activities_v2(where: { current_token_data: { token_uri: { _eq: $uri } } }, order_by: { transaction_version: desc }, limit: 1) { token_data_id transaction_version } }`,
+                      variables: { uri: ipfsUri },
+                    }
+                  }
                   const rr = await fetch(gql, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(q) })
                   const jj = await rr.json()
                   activities = jj?.data?.token_activities_v2 || []
+                  let owners = []
+                  if (td?.token_data_id) {
+                    const ownQ = {
+                      query: `query($id: String) { current_token_ownerships_v2(where: { token_data_id: { _eq: $id } }, limit: 5) { owner_address amount } }`,
+                      variables: { id: td.token_data_id },
+                    }
+                    const ro = await fetch(gql, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(ownQ) })
+                    const jo = await ro.json()
+                    owners = jo?.data?.current_token_ownerships_v2 || []
+                  }
+                  const ok = !!td || activities.length > 0 || owners.length > 0
+                  setScanResult({ success: ok, cid, meta, activities, token_data_id: td?.token_data_id || '', owners })
                 } catch {}
-                const ok = !!meta && (activities.length > 0)
-                setScanResult({ success: ok, cid, meta, activities })
               } catch (e) {
                 setScanResult({ success: false })
               } finally {
@@ -752,6 +824,61 @@ export default function App() {
                 <Input placeholder="ipfs://CID 或 https://gateway/ipfs/CID" />
               </Form.Item>
               <Button type="primary" htmlType="submit" loading={scanLoading}>{t('verify_start')}</Button>
+            </Form>
+          </Space>
+        </Card>
+        <Card style={{ marginTop: 16 }}>
+          <Space direction="vertical" style={{ width: '100%' }}>
+            <Title level={5}>Verify by Transaction Version</Title>
+            <Form layout="vertical" onFinish={async (v) => {
+              setScanLoading(true)
+              try {
+                const version = Number(v.version)
+                if (!version) {
+                  setScanResult({ success: false })
+                  setScanLoading(false)
+                  return
+                }
+                const gql = indexerUrl
+                const q1 = {
+                  query: `query($v: bigint!) { token_activities_v2(where: { transaction_version: { _eq: $v } }, limit: 1) { token_data_id transaction_version } }`,
+                  variables: { v: version },
+                }
+                const r1 = await fetch(gql, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(q1) })
+                const j1 = await r1.json()
+                const ev = (j1?.data?.token_activities_v2 || [])[0]
+                if (!ev?.token_data_id) {
+                  setScanResult({ success: false })
+                  setScanLoading(false)
+                  return
+                }
+                const q2 = {
+                  query: `query($id: String) { current_token_datas_v2(where: { token_data_id: { _eq: $id } }, limit: 1) { token_data_id token_name token_uri } }`,
+                  variables: { id: ev.token_data_id },
+                }
+                const r2 = await fetch(gql, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(q2) })
+                const j2 = await r2.json()
+                const td = (j2?.data?.current_token_datas_v2 || [])[0]
+                let meta = null
+                if (td?.token_uri && td.token_uri.startsWith('ipfs://')) {
+                  const cid = td.token_uri.replace('ipfs://','')
+                  const url = `${ipfsGateway}${cid}`
+                  meta = await fetch(url).then((r) => r.json().catch(() => null)).catch(() => null)
+                  if (!meta) meta = { name: '', image: url }
+                  setScanResult({ success: true, cid, meta, activities: [ev], token_data_id: td.token_data_id })
+                } else {
+                  setScanResult({ success: true, cid: '', meta: {}, activities: [ev], token_data_id: td?.token_data_id || '' })
+                }
+              } catch (e) {
+                setScanResult({ success: false })
+              } finally {
+                setScanLoading(false)
+              }
+            }}>
+              <Form.Item label="Transaction Version" name="version">
+                <Input placeholder="e.g., 6988433600" />
+              </Form.Item>
+              <Button type="primary" htmlType="submit" loading={scanLoading}>Verify</Button>
             </Form>
           </Space>
         </Card>
@@ -800,6 +927,28 @@ export default function App() {
                 <Button onClick={() => setShowAddressModal(true)}>模块地址</Button>
               </Space>
             </Space>
+          </Space>
+        </Card>
+        <Card style={{ marginTop: 16 }}>
+          <Space direction="vertical" style={{ width: '100%' }}>
+            <Title level={4}>Settings</Title>
+            <Form layout="vertical" onFinish={(v) => {
+              if (typeof v.indexerUrl === 'string' && v.indexerUrl.trim()) setIndexerUrl(v.indexerUrl.trim())
+              if (typeof v.ipfsGateway === 'string' && v.ipfsGateway.trim()) setIpfsGateway(v.ipfsGateway.trim())
+              if (typeof v.collectionName === 'string' && v.collectionName.trim()) setCollectionName(v.collectionName.trim())
+              message.success('Settings updated')
+            }} initialValues={{ indexerUrl, ipfsGateway, collectionName }}>
+              <Form.Item label="Indexer GraphQL URL" name="indexerUrl">
+                <Input placeholder="https://api.testnet.aptoslabs.com/v1/graphql" />
+              </Form.Item>
+              <Form.Item label="IPFS Gateway" name="ipfsGateway">
+                <Input placeholder="https://ipfs.io/ipfs/" />
+              </Form.Item>
+              <Form.Item label="Collection Name" name="collectionName">
+                <Input placeholder="LiquorChain Collection" />
+              </Form.Item>
+              <Button type="primary" htmlType="submit">Save</Button>
+            </Form>
           </Space>
         </Card>
       </Col>
